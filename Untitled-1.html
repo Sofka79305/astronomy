@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Constellation Trainer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: #0a0e1a;
+            color: #e0e0e0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #app {
+            flex: 1;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #canvas-container {
+            flex: 1;
+            position: relative;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(ellipse at 50% 40%, #111827 0%, #05070c 100%);
+        }
+
+        .top-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(to bottom, rgba(5, 7, 12, 0.95), transparent);
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .top-bar > * {
+            pointer-events: auto;
+        }
+
+        .constellation-name {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            color: #f0c674;
+            text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+        }
+
+        .constellation-name small {
+            display: block;
+            font-size: 11px;
+            font-weight: 400;
+            color: #888;
+            letter-spacing: 0.3px;
+            margin-top: 2px;
+        }
+
+        select {
+            background: #1a2233;
+            color: #e0e0e0;
+            border: 1px solid #2a3a55;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 13px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .bottom-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 16px 20px 24px;
+            display: flex;
+            justify-content: center;
+            background: linear-gradient(to top, rgba(5, 7, 12, 0.95), transparent);
+            z-index: 10;
+        }
+
+        .status {
+            font-size: 14px;
+            color: #9aa;
+            text-align: center;
+            transition: color 0.3s;
+        }
+
+        .status.success {
+            color: #4ade80;
+            font-weight: 600;
+        }
+
+        .status.error {
+            color: #f87171;
+        }
+
+        .btn {
+            background: #1e2a44;
+            color: #c0d0e0;
+            border: 1px solid #2e4a6e;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn:active {
+            background: #2a3a55;
+        }
+
+        .reset-btn {
+            position: absolute;
+            top: 12px;
+            right: 16px;
+            z-index: 10;
+            padding: 8px 14px;
+            font-size: 12px;
+        }
+
+        @media (max-width: 380px) {
+            .constellation-name { font-size: 15px; }
+            .top-bar { padding: 10px 12px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div id="canvas-container">
+            <canvas id="sky"></canvas>
+        </div>
+
+        <div class="top-bar">
+            <div class="constellation-name" id="constName">
+                Ursa Major
+                <small>Большая Медведица</small>
+            </div>
+            <select id="constSelect" aria-label="Выбор созвездия"></select>
+        </div>
+
+        <button class="btn reset-btn" id="resetBtn">Сбросить</button>
+
+        <div class="bottom-bar">
+            <div class="status" id="status">Соедините звёзды, чтобы построить контур</div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // ДАННЫЕ СОЗВЕЗДИЙ
+        // Координаты: RA (часы, 0–24), Dec (градусы, -90…90)
+        // lines: пары индексов звёзд в массиве stars
+        // ============================================================
+        const constellations = [
+            {
+                id: 'uma',
+                name: 'Ursa Major',
+                nameRu: 'Большая Медведица',
+                stars: [
+                    { ra: 11.062, dec: 61.751 }, // 0 Dubhe
+                    { ra: 11.031, dec: 56.383 }, // 1 Merak
+                    { ra: 11.897, dec: 53.695 }, // 2 Phecda
+                    { ra: 12.257, dec: 57.033 }, // 3 Megrez
+                    { ra: 12.900, dec: 55.960 }, // 4 Alioth
+                    { ra: 13.399, dec: 54.925 }, // 5 Mizar
+                    { ra: 13.792, dec: 49.313 }  // 6 Alkaid
+                ],
+                lines: [
+                    [0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6],
+                    [3, 0] // замыкающая линия ковша
+                ]
+            },
+            {
+                id: 'ori',
+                name: 'Orion',
+                nameRu: 'Орион',
+                stars: [
+                    { ra: 5.919, dec: 7.407 },  // 0 Betelgeuse
+                    { ra: 5.242, dec: -8.202 }, // 1 Rigel
+                    { ra: 5.418, dec: 6.350 },  // 2 Bellatrix
+                    { ra: 5.533, dec: -0.299 }, // 3 Mintaka
+                    { ra: 5.604, dec: -1.202 }, // 4 Alnilam
+                    { ra: 5.679, dec: -1.943 }, // 5 Alnitak
+                    { ra: 5.796, dec: -9.670 }  // 6 Saiph
+                ],
+                lines: [
+                    [0, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 1], [1, 5],
+                    [0, 3] // плечо к поясу
+                ]
+            },
+            {
+                id: 'cas',
+                name: 'Cassiopeia',
+                nameRu: 'Кассиопея',
+                stars: [
+                    { ra: 0.675, dec: 56.537 }, // 0 Schedar
+                    { ra: 0.153, dec: 59.150 }, // 1 Caph
+                    { ra: 0.945, dec: 60.717 }, // 2 Navi
+                    { ra: 1.430, dec: 60.235 }, // 3 Ruchbah
+                    { ra: 1.906, dec: 63.670 }  // 4 Segin
+                ],
+                lines: [
+                    [1, 0], [0, 2], [2, 3], [3, 4]
+                ]
+            }
+        ];
+
+        // ============================================================
+        // СОСТОЯНИЕ
+        // ============================================================
+        const state = {
+            currentConstellation: null,
+            selectedStar: null,        // индекс первой выбранной звезды
+            correctLines: [],          // пары индексов, которые уже соединены правильно
+            wrongLine: null,           // {a, b, until} для временной красной линии
+            animFrame: null,
+            scale: 1,
+            offsetX: 0,
+            offsetY: 0,
+            starPositions: []          // экранные координаты звёзд
+        };
+
+        // ============================================================
+        // DOM
+        // ============================================================
+        const canvas = document.getElementById('sky');
+        const ctx = canvas.getContext('2d');
+        const constNameEl = document.getElementById('constName');
+        const constSelect = document.getElementById('constSelect');
+        const statusEl = document.getElementById('status');
+        const resetBtn = document.getElementById('resetBtn');
+
+        // ============================================================
+        // ИНИЦИАЛИЗАЦИЯ
+        // ============================================================
+        function init() {
+            resizeCanvas();
+            populateSelect();
+            loadConstellation(constellations[0].id);
+
+            window.addEventListener('resize', () => {
+                resizeCanvas();
+                if (state.currentConstellation) {
+                    computeProjection();
+                    draw();
+                }
+            });
+
+            constSelect.addEventListener('change', (e) => {
+                loadConstellation(e.target.value);
+            });
+
+            resetBtn.addEventListener('click', () => {
+                resetProgress();
+                draw();
+            });
+
+            // Обработка тапов / кликов
+            canvas.addEventListener('pointerdown', handlePointerDown);
+
+            // Запуск цикла анимации для временных линий
+            animate();
+        }
+
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const dpr = window.devicePixelRatio || 1;
+            const rect = container.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            // Сохраняем логические размеры для расчётов
+            canvas.logicalWidth = rect.width;
+            canvas.logicalHeight = rect.height;
+        }
+
+        function populateSelect() {
+            constSelect.innerHTML = '';
+            constellations.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = `${c.name} (${c.nameRu})`;
+                constSelect.appendChild(opt);
+            });
+        }
+
+        function loadConstellation(id) {
+            const c = constellations.find(x => x.id === id);
+            if (!c) return;
+            state.currentConstellation = c;
+            resetProgress();
+            constNameEl.innerHTML = `${c.name}<small>${c.nameRu}</small>`;
+            constSelect.value = c.id;
+            computeProjection();
+            draw();
+        }
+
+        function resetProgress() {
+            state.selectedStar = null;
+            state.correctLines = [];
+            state.wrongLine = null;
+            statusEl.textContent = 'Соедините звёзды, чтобы построить контур';
+            statusEl.className = 'status';
+        }
+
+        // ============================================================
+        // ПРОЕКЦИЯ: RA/Dec → экранные координаты
+        // Простая линейная проекция с автомасштабом под участок неба.
+        // ============================================================
+        function computeProjection() {
+            const c = state.currentConstellation;
+            if (!c) return;
+
+            const stars = c.stars;
+            const raValues = stars.map(s => s.ra);
+            const decValues = stars.map(s => s.dec);
+
+            const raMin = Math.min(...raValues);
+            const raMax = Math.max(...raValues);
+            const decMin = Math.min(...decValues);
+            const decMax = Math.max(...decValues);
+
+            // Добавляем отступы, чтобы звёзды не прилипали к краям
+            const raPad = (raMax - raMin) * 0.35 || 1;
+            const decPad = (decMax - decMin) * 0.35 || 1;
+
+            const raRange = (raMax - raMin) + raPad * 2;
+            const decRange = (decMax - decMin) + decPad * 2;
+
+            const w = canvas.logicalWidth || 360;
+            const h = canvas.logicalHeight || 640;
+
+            // Масштаб: вписываем диапазон в экран с сохранением пропорций
+            const scaleX = w / raRange;
+            const scaleY = h / decRange;
+            // Используем меньший масштаб, чтобы всё поместилось, но не слишком мелко
+            const scale = Math.min(scaleX, scaleY) * 0.9;
+
+            // Центрируем
+            const centerRa = (raMin + raMax) / 2;
+            const centerDec = (decMin + decMax) / 2;
+
+            state.scale = scale;
+            state.offsetX = w / 2 - centerRa * scale;
+            // По Dec инвертируем ось Y (больший Dec — выше на экране)
+            state.offsetY = h / 2 + centerDec * scale;
+
+            // Пересчитываем экранные позиции звёзд
+            state.starPositions = stars.map(s => ({
+                x: state.offsetX + s.ra * scale,
+                y: state.offsetY - s.dec * scale
+            }));
+        }
+
+        // ============================================================
+        // ОТРИСОВКА
+        // ============================================================
+        function draw() {
+            const w = canvas.logicalWidth;
+            const h = canvas.logicalHeight;
+            ctx.clearRect(0, 0, w, h);
+
+            const c = state.currentConstellation;
+            if (!c) return;
+
+            // Фон звёздного неба — лёгкие точки для антуража
+            drawBackgroundStars(w, h);
+
+            // Эталонные линии (невидимые или очень слабые) — можно рисовать
+            // полупрозрачным пунктиром для подсказки. Здесь не рисуем,
+            // чтобы пользователь сам строил контур.
+
+            // Правильные линии — зелёные
+            ctx.strokeStyle = 'rgba(74, 222, 128, 0.85)';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.shadowColor = 'rgba(74, 222, 128, 0.5)';
+            ctx.shadowBlur = 8;
+
+            state.correctLines.forEach(([a, b]) => {
+                const pa = state.starPositions[a];
+                const pb = state.starPositions[b];
+                if (pa && pb) {
+                    ctx.beginPath();
+                    ctx.moveTo(pa.x, pa.y);
+                    ctx.lineTo(pb.x, pb.y);
+                    ctx.stroke();
+                }
+            });
+
+            ctx.shadowBlur = 0;
+
+            // Временная неправильная линия — красная
+            if (state.wrongLine) {
+                const { a, b, until } = state.wrongLine;
+                if (Date.now() < until) {
+                    const pa = state.starPositions[a];
+                    const pb = state.starPositions[b];
+                    if (pa && pb) {
+                        ctx.strokeStyle = 'rgba(248, 113, 113, 0.8)';
+                        ctx.lineWidth = 2.5;
+                        ctx.setLineDash([6, 6]);
+                        ctx.beginPath();
+                        ctx.moveTo(pa.x, pa.y);
+                        ctx.lineTo(pb.x, pb.y);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                    }
+                } else {
+                    state.wrongLine = null;
+                }
+            }
+
+            // Линия от выбранной звезды к пальцу (или к курсору) — не реализуем
+            // в целях упрощения; можно добавить при желании.
+
+            // Рисуем звёзды
+            state.starPositions.forEach((p, i) => {
+                const isSelected = state.selectedStar === i;
+                const isConnected = state.correctLines.some(l => l[0] === i || l[1] === i);
+
+                // Свечение
+                const glowRadius = isSelected ? 18 : 12;
+                const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glowRadius);
+                if (isSelected) {
+                    gradient.addColorStop(0, 'rgba(240, 198, 116, 0.6)');
+                    gradient.addColorStop(1, 'rgba(240, 198, 116, 0)');
+                } else if (isConnected) {
+                    gradient.addColorStop(0, 'rgba(74, 222, 128, 0.35)');
+                    gradient.addColorStop(1, 'rgba(74, 222, 128, 0)');
+                } else {
+                    gradient.addColorStop(0, 'rgba(180, 200, 240, 0.25)');
+                    gradient.addColorStop(1, 'rgba(180, 200, 240, 0)');
+                }
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, glowRadius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Ядро звезды
+                const radius = isSelected ? 6 : 4.5;
+                ctx.fillStyle = isSelected ? '#f0c674' : (isConnected ? '#a0e0b0' : '#d0e0ff');
+                ctx.shadowColor = isSelected ? '#f0c674' : '#aac8ff';
+                ctx.shadowBlur = isSelected ? 16 : 8;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // Проверка завершения
+            if (state.correctLines.length === c.lines.length) {
+                statusEl.textContent = '✅ Созвездие построено верно!';
+                statusEl.className = 'status success';
+            }
+        }
+
+        function drawBackgroundStars(w, h) {
+            // Декоративные слабые звёзды для атмосферы
+            // Используем детерминированный псевдослучайный паттерн
+            const seed = 42;
+            for (let i = 0; i < 120; i++) {
+                const x = ((i * 137.508 + seed) % w);
+                const y = ((i * 93.989 + seed * 2) % h);
+                const r = 0.4 + ((i * 7.3) % 1.2);
+                ctx.fillStyle = `rgba(200, 210, 255, ${0.08 + (i % 5) * 0.03})`;
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function animate() {
+            if (state.wrongLine && Date.now() >= state.wrongLine.until) {
+                state.wrongLine = null;
+                draw();
+            }
+            state.animFrame = requestAnimationFrame(animate);
+        }
+
+        // ============================================================
+        // ВЗАИМОДЕЙСТВИЕ
+        // ============================================================
+        function handlePointerDown(e) {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            // Находим ближайшую звезду в радиусе 30px
+            let closest = -1;
+            let minDist = 30;
+
+            state.starPositions.forEach((p, i) => {
+                const dx = p.x - x;
+                const dy = p.y - y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < minDist) {
+                    minDist = dist;
+                    closest = i;
+                }
+            });
+
+            if (closest === -1) {
+                // Тап по пустому месту — сбрасываем выбор
+                state.selectedStar = null;
+                draw();
+                return;
+            }
+
+            if (state.selectedStar === null) {
+                // Первый выбор
+                state.selectedStar = closest;
+                draw();
+            } else if (state.selectedStar === closest) {
+                // Повторный тап по той же звезде — отмена выбора
+                state.selectedStar = null;
+                draw();
+            } else {
+                // Пытаемся соединить
+                const a = state.selectedStar;
+                const b = closest;
+
+                // Проверяем, есть ли такая линия в эталоне (в любом порядке)
+                const isCorrect = state.currentConstellation.lines.some(
+                    ([x, y]) => (x === a && y === b) || (x === b && y === a)
+                );
+
+                // Проверяем, не соединены ли уже
+                const alreadyDone = state.correctLines.some(
+                    ([x, y]) => (x === a && y === b) || (x === b && y === a)
+                );
+
+                if (alreadyDone) {
+                    // Уже соединено — просто снимаем выбор
+                    state.selectedStar = null;
+                    draw();
+                    return;
+                }
+
+                if (isCorrect) {
+                    state.correctLines.push([a, b]);
+                    state.selectedStar = null;
+                    statusEl.textContent = 'Верно! Продолжайте.';
+                    statusEl.className = 'status';
+                    draw();
+                } else {
+                    // Неправильная линия — показываем красную на 600 мс
+                    state.wrongLine = { a, b, until: Date.now() + 600 };
+                    state.selectedStar = null;
+                    statusEl.textContent = 'Неверное соединение. Попробуйте другую пару.';
+                    statusEl.className = 'status error';
+                    draw();
+                    // Через 1.2 с возвращаем нейтральный текст, если ещё не завершено
+                    setTimeout(() => {
+                        if (statusEl.classList.contains('error') && state.correctLines.length < state.currentConstellation.lines.length) {
+                            statusEl.textContent = 'Соедините звёзды, чтобы построить контур';
+                            statusEl.className = 'status';
+                        }
+                    }, 1200);
+                }
+            }
+        }
+
+        // ============================================================
+        // СТАРТ
+        // ============================================================
+        init();
+    </script>
+</body>
+</html>
